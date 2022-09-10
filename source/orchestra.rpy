@@ -17,6 +17,9 @@ from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
 import icecream
 import inspect
 
+#GO INTO THE RIGHT DIRECTORY
+rp.set_current_directory('/raid/ryan/CleanCode/Projects/Experimental/diffusion_for_nerf/source')
+
 #SETUP ASSERTIONS
 assert rp.get_current_directory().endswith('/diffusion_for_nerf/source')
 
@@ -25,6 +28,7 @@ project_root='..' #We're in the 'source' folder of the project
 dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
 diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
 plenoxel_opt_folder = '/raid/ryan/CleanCode/Github/svox2/opt' #TODO: Move this into the project
+plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 
 #DIFFUSION SETTINGS
 diffusion_device = torch.device("cuda:1")
@@ -33,15 +37,28 @@ resolution=128 #Later on, this should be detected from the diffusion_model_folde
 
 #DERIVED PATHS:
 combined_photo_folder = rp.path_join(dataset_path,'combined_photos') #For training the diffusion model
+trading_folder=rp.temporary_file_path() #Will be in /tmp/local or something...ideally not on /raid
 training_json_file = rp.path_join(dataset_path,'transforms_train.json')
 
-#SETTINGS VALIDATION
+#PATH SETTINGS VALIDATION
+assert rp.folder_exists(project_root)
 assert rp.folder_exists(combined_photo_folder)
 assert rp.folder_exists(diffusion_model_folder)
 assert rp.folder_exists(project_root)
 assert rp.folder_exists(dataset_path)
 assert rp.folder_exists(plenoxel_opt_folder)
+assert rp.folder_exists(trading_folder)
 assert rp.file_exists(training_json_file)
+
+#FINALIZE PATH SETTINGS
+project_root           = rp.get_absolute_path(project_root          )
+combined_photo_folder  = rp.get_absolute_path(combined_photo_folder )
+diffusion_model_folder = rp.get_absolute_path(diffusion_model_folder)
+project_root           = rp.get_absolute_path(project_root          )
+dataset_path           = rp.get_absolute_path(dataset_path          )
+plenoxel_opt_folder    = rp.get_absolute_path(plenoxel_opt_folder   )
+trading_folder         = rp.get_absolute_path(trading_folder        )
+training_json_file     = rp.get_absolute_path(training_json_file    )
 
 #SETUP
 torch.cuda.set_device(diffusion_device)
@@ -85,35 +102,100 @@ def tiled_torch_images(images):
     images = rp.tiled_images(images)
     return images
 
+class SetCurrentDirectoryTemporarily:
+    #Temporarily CD into a directory
+    #Modified from rp
+    def __init__(self,directory):
+        self.directory=directory
+        
+    def __enter__(self, directory):
+        self.original_dir=rp.get_current_directory()
+        if self.directory is not None:
+            rp.set_current_directory(self.directory)
+        rp.fansi_print("ENTERING DIR: ",rp.get_current_directory(),'yellow')
+            
+    def __exit__(self,*args):
+        rp.set_current_directory(self.original_dir)
+        rp.fansi_print("EXITING DIR, NOW IN ",rp.get_current_directory(),'yellow')
+
 def do_in_dir(func,folder):
     #Decorator for functions - uses SetCurrentDirectoryTemporarily
     def wrapper(*args,**kwargs):
-        with rp.SetCurrentDirectoryTemporarily(folder):
+        with SetCurrentDirectoryTemporarily(folder):
             return func(*args,**kwargs)
     wrapper.signature=inspect.signature(func) #Better rp autocompletion
     return wrapper
 
 
+#ORCHESTRATOR
+with SetCurrentDirectoryTemporarily(trading_folder):
+    rp.fansi_print("TRADING FOLDER: " + rp.get_current_directory(), "cyan", "bold")
+
+    #We're not going to bother with test or validation sets: only training.
+    rp.copy_file(training_json_file,'transforms_train.json')
+    rp.make_symlink('transforms_train.json','transforms_test.json') #This might not be necessary
+    rp.make_symlink('transforms_train.json','transforms_val.json') #This might not be necessary
+
+    rp.make_directory('train')
+    rp.make_symlink('test','train')
+    rp.make_symlink('val','train')
+
+def save_images_to_trade(images):
+    assert len(images)==len(image_filenames), 'All images should be in the same length and order as the image filenames'
+    with SetCurrentDirectoryTemporarily(trading_folder):
+        rp.set_current_directory('train')
+        rp.fansi_print("SAVING IMAGES TO TRADE FOLDER...",'cyan','bold')
+        rp.save_images(images,image_filenames,show_progress=True)
+        rp.fansi_print("...DONE!",'cyan','bold')
+
+# def load_images_from_trade():
+#     with SetCurrentDirectoryTemporarily(trading_folder):
+#         rp.set_current_directory('train')
+#         rp.fansi_print("LOADING IMAGES FROM TRADE FOLDER...",'cyan','bold')
+#         output=rp.load_images(image_filenames,show_progress=True)
+#         rp.fansi_print("...DONE!",'cyan','bold')
+#     return output
+
+def load_plenoxel_renderings(images_folder):
+    image_files=rp.get_all_image_files(images_folder,sort_by='number')
+    assert len(image_files)==len(image_filenames),'Mismatch! Whats going on here? We want %i images but found %i in %s'%(len(image_files),len(image_filenames),images_folder)
+    rp.fansi_print("LOADING IMAGES FROM PLENOXEL OUTPUT FOLDER...",'cyan','bold')
+    images=rp.load_images(image_files,show_progress=True)
+    rp.fansi_print("...DONE!",'cyan','bold')
+
+    #The plenoxel code outputs images that compare ground truth to its own output, side by side. We only want the output, so we take the right half of each image.
+    images=[rp.split_tensor_into_regions(x,1,2)[1] for x in images]
+
+    return images
+
+
+
 #DIFFUSION FUNCTIONS
-times=70*BATCH_SIZE
-def modify_prediction(image):
-    global times
-    if times:
-        print(times)
-        times-=1
-        #image = rotate_image(image, randint(360))
-        #image = rotate_image(image, 0)
-        #image = rotate_image(image, 30)
-    image = rp.crop_image(image, resolution, resolution, origin="center")
-    return image
+
+#times=70*BATCH_SIZE
+#def modify_prediction(image):
+#    global times
+#    if times:
+#        print(times)
+#        times-=1
+#        #image = rotate_image(image, randint(360))
+#        #image = rotate_image(image, 0)
+#        #image = rotate_image(image, 30)
+#    image = rp.crop_image(image, resolution, resolution, origin="center")
+#    return image
 
 def modify_predictions(images):
-    images = [modify_prediction(image) for image in images]
+    # images = [modify_prediction(image) for image in images]
 
-    try:
-        display_image_on_macmax(rp.tiled_images(images))
-    except Exception as e:
-        rp.fansi_print('ERROR: '+str(e),'red')
+    rp.fansi_print("MODIFYING PREDICTIONS!",'cyan','bold')
+    before_image=(rp.labeled_image(rp.tiled_images(images),'Diffusion Output',size=50)) #Display images before...
+
+    save_images_to_trade(images)  # Where plenoxels can see them...
+    output_images_folder = test_launch_trainer(train=True, images=True, video=False)
+    images = load_plenoxel_renderings(output_images_folder)
+
+    after_image=rp.labeled_image(rp.tiled_images(images),'Plenoxel Output',size=50) #Display after-images...
+    display_image_on_macmax(rp.vertically_concatenated_images(before_image,after_image))
 
     return images
 
@@ -184,8 +266,10 @@ def render_imgs_circle(checkpoint_path, dataset_path):
 def render_imgs(checkpoint_path, dataset_path):
     assert_right_plenoxel_conditions()
 
+    #The --train flag means we evaluate the training folder. This is what we want to do.
+    #Not that it would (currently) make a difference - in the diffusion plenoxel test, the test and val folders and jsons are symlinks to the train ones
+
     command = "python render_imgs.py --blackbg --no_vid --no_lpips --train %s %s"
-    command = "python render_imgs.py --blackbg --no_vid --no_lpips %s %s"
     command %= (
         checkpoint_path,
         dataset_path,
@@ -195,30 +279,23 @@ def render_imgs(checkpoint_path, dataset_path):
 
     os.system(command)
 
-    #out_path = get_parent_directory(checkpoint_path)
-    #out_path = path_join(out_path, "circle_renders.mp4")
-    #assert path_exists(out_path), "Something went wrong - the video wasnt written"
+    output_images_folder_name='test_renders_blackbg' #This might change if we don't use --blackbg!!
+    output_images_folder = rp.path_join(checkpoint_path, output_images_folder_name)
+    output_images_folder = rp.get_absolute_path(output_images_folder) #It might already be absolute idk lol too lazy to check
+    assert rp.folder_exists(output_images_folder)
+
+    return output_images_folder
+
     
 @do_in_dir(plenoxel_opt_folder)
 def test_launch_trainer(train=True,images=True,video=True):
     rp.tic()
     
-    experiment_name='first_experiment_chair__fast__subset__run1'
-    experiment_name='lego__fast__128_black__run1'
+    experiment_name = plenoxel_experiment_name
     
     gpu_id=0
     
-    #dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair'
-    #dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair/subsets'
-    dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego/subsets/subset_25__just_train'
-    dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego/variations/128x128rgb'
-    dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego/variations/512x512rgb'
-    dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego/variations/128x128rgb_white'
-    dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego/variations/128x128rgb'
-    #dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego/variations/256x256rgb'
-    #dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair/variations/256x256rgb'
-    #dataset_path='/raid/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair'
-
+    dataset_path = trading_folder
 
     config_path='configs/ryan_syn.json'
  
@@ -229,20 +306,23 @@ def test_launch_trainer(train=True,images=True,video=True):
     checkpoint_path=get_checkpoint_path(experiment_name)
 
     if images:    
-        render_imgs(checkpoint_path,dataset_path)
+        output_images_folder = render_imgs(checkpoint_path,dataset_path)
         rp.fansi_print(rp.toc(),'cyan','bold');rp.tic()
+    else:
+        output_images_folder = None
     
     if video:
         video_path=render_imgs_circle(checkpoint_path,dataset_path)
+        rp.fansi_print("CREATED VIDEO: " + video_path, None, "bold")
         rp.fansi_print(rp.toc(),'cyan','bold');rp.tic()
 
-    return video_path
+    return output_images_folder
 
 
 
 
 #DIFFUSION SETUP
-with rp.SetCurrentDirectoryTemporarily(diffusion_model_folder):
+with SetCurrentDirectoryTemporarily(diffusion_model_folder):
     model = Unet(dim=64, dim_mults=(1, 2, 4, 8)).to(diffusion_device)
 
     diffusion = GaussianDiffusion(
