@@ -26,24 +26,34 @@ assert rp.get_current_directory().endswith('/diffusion_for_nerf/source')
 #PATH SETTINGS
 project_root='..' #We're in the 'source' folder of the project
 
-#lego mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
+# # drums mode
+# dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
+
+# chair mode
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
+diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_chair_direct_128')
+
+##lego mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
 
 #hotdog mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct')
+# dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
+# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
 
 
 plenoxel_opt_folder = '/raid/ryan/CleanCode/Github/svox2/opt' #TODO: Move this into the project
 plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 
 #OTHER SETTINGS
-NUM_ITER=999 #Between 1 and 999. 10 is not enough.
-NUM_FIXED=5 #Number of fixed ground truth images.
+NUM_ITER=20 #Between 1 and 999. 10 is not enough.
+NUM_HINTS=5 #Number of fixed ground truth images.
+BATCH_SIZE=20 #Can be None indicating to use the whole training set, or an int overriding it
+# BATCH_SIZE=None
 
 #DIFFUSION SETTINGS
-diffusion_device = torch.device("cuda:1")
+diffusion_device = torch.device("cuda:0") #If you run out of vram, set these to two different devices
 plenoxel_device = torch.device("cuda:0")
 resolution=128 #Later on, this should be detected from the diffusion_model_folder
 
@@ -75,17 +85,22 @@ training_json_file     = rp.get_absolute_path(training_json_file    )
 #SETUP
 torch.cuda.set_device(diffusion_device)
 dataset_json=rp.load_json(training_json_file)
+if BATCH_SIZE is not None:
+    #For artificially limiting the batch size
+    dataset_json['frames']=dataset_json['frames'][:BATCH_SIZE]
+else:
+    BATCH_SIZE=len(dataset_json['frames'])
 image_filenames=[rp.get_file_name(frame['file_path']) for frame in dataset_json['frames']]
 image_filenames=[rp.with_file_extension(x,'png',replace=True) for x in image_filenames]
 
+
+#SETTINGS VALIDATION
+assert 0<=NUM_HINTS<=BATCH_SIZE
 #MAX BATCH SIZE FOR RESOLUTIONS:
 #    128x128 : 225
 #    256x256 : ?
-BATCH_SIZE=len(dataset_json['frames'])
-icecream.ic(BATCH_SIZE)
-
-#SETTINGS VALIDATION
-assert 0<=NUM_FIXED<=BATCH_SIZE
+assert BATCH_SIZE==len(dataset_json['frames'])
+icecream.ic(BATCH_SIZE,NUM_HINTS)
 
 #GENERAL HELPER FUNCTIONS
 @rp.memoized
@@ -148,13 +163,11 @@ def do_in_dir(folder):
 
 
 #ORCHESTRATOR
-print("JM")
 with SetCurrentDirectoryTemporarily(trading_folder):
-    print("J))M")
     rp.fansi_print("TRADING FOLDER: " + rp.get_current_directory(), "cyan", "bold")
 
     #We're not going to bother with test or validation sets: only training.
-    rp.copy_file(training_json_file,'transforms_train.json')
+    rp.save_json(dataset_json,'transforms_train.json',pretty=True)
     rp.make_symlink('transforms_train.json','transforms_test.json') #This might not be necessary
     rp.make_symlink('transforms_train.json','transforms_val.json') #This might not be necessary
 
@@ -179,8 +192,8 @@ def save_images_to_trade(images):
 #     return output
 
 def load_plenoxel_renderings(images_folder):
-    image_files=rp.get_all_image_files(images_folder,sort_by='number')
-    assert len(image_files)==len(image_filenames),'Mismatch! Whats going on here? We want %i images but found %i in %s'%(len(image_files),len(image_filenames),images_folder)
+    image_files=rp.get_all_image_files(images_folder,sort_by='number')[:BATCH_SIZE]
+    assert len(image_files)==BATCH_SIZE,'Mismatch! Whats going on here? We want %i images but found %i in %s'%(BATCH_SIZE,len(image_files),images_folder)
     rp.fansi_print("LOADING IMAGES FROM PLENOXEL OUTPUT FOLDER...",'cyan','bold')
     images=rp.load_images(image_files,show_progress=True)
     rp.fansi_print("...DONE!",'cyan','bold')
@@ -208,8 +221,8 @@ def load_plenoxel_renderings(images_folder):
 
 print("Loading fixed images from ground truth dataset...")
 with SetCurrentDirectoryTemporarily(rp.path_join(dataset_path,'train')):
-    fixed_images=load_images(image_filenames,show_progress=True)
-    fixed_images=[rp.cv_resize_image(x,(resolution,)*2) for x in fixed_images]
+    fixed_images=rp.load_images(image_filenames,show_progress=True)
+    fixed_images=[rp.as_float_image(rp.as_rgb_image(rp.cv_resize_image(x,(resolution,)*2))) for x in fixed_images]
 
 
 ITER=0
@@ -221,6 +234,9 @@ def modify_predictions(images):
     print('\n\n\n\n================  STARTING ITER %i  /  %i  ===============\n\n'%(ITER,NUM_ITER))
 
     ITER+=1
+    
+    if NUM_HINTS:
+        images[:NUM_HINTS]=fixed_images[:NUM_HINTS]
 
     rp.fansi_print("MODIFYING PREDICTIONS!",'cyan','bold')
     before_image=(rp.labeled_image(rp.tiled_images(images),'Diffusion Output',size=50)) #Display images before...
@@ -231,7 +247,6 @@ def modify_predictions(images):
 
     after_image=rp.labeled_image(rp.tiled_images(images),'Plenoxel Output',size=50) #Display after-images...
 
-    images[:NUM_FIXED]=fixed_images[:NUM_FIXED]
 
     display_image_on_macmax(
         rp.labeled_image(
