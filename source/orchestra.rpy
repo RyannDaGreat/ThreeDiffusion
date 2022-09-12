@@ -16,6 +16,7 @@ import torch
 from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
 import icecream
 import inspect
+import random
 
 #GO INTO THE RIGHT DIRECTORY
 rp.set_current_directory('/raid/ryan/CleanCode/Projects/Experimental/diffusion_for_nerf/source')
@@ -30,26 +31,40 @@ project_root='..' #We're in the 'source' folder of the project
 # dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
 # diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
 
-# chair mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_chair_direct_128')
+# # chair mode
+# dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
+# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_chair_direct_128')
 
-##lego mode
-#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
-#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
+#lego mode
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
+diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
 
-#hotdog mode
-# dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
-# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
+##hotdog mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
 
 
 plenoxel_opt_folder = '/raid/ryan/CleanCode/Github/svox2/opt' #TODO: Move this into the project
 plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 
+##OTHER SETTINGS
+#NUM_ITER=20 #Between 1 and 999. 10 is not enough.
+#NUM_HINTS=3 #Number of fixed ground truth images.
+#HINT_REPEAT=4 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
+#BATCH_SIZE=20 #Can be None indicating to use the whole training set, or an int overriding it
+#BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
+
 #OTHER SETTINGS
 NUM_ITER=20 #Between 1 and 999. 10 is not enough.
-NUM_HINTS=5 #Number of fixed ground truth images.
+NUM_HINTS=2 #Number of fixed ground truth images.
+HINT_REPEAT=5 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
 BATCH_SIZE=20 #Can be None indicating to use the whole training set, or an int overriding it
+BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
+
+SEED=random.seed()
+# SEED=1298
+random.seed(SEED)
+
 # BATCH_SIZE=None
 
 #DIFFUSION SETTINGS
@@ -85,6 +100,10 @@ training_json_file     = rp.get_absolute_path(training_json_file    )
 #SETUP
 torch.cuda.set_device(diffusion_device)
 dataset_json=rp.load_json(training_json_file)
+
+dataset_json['frames']=rp.shuffled(dataset_json['frames'])
+dataset_json['frames']=dataset_json['frames'][:NUM_HINTS]*HINT_REPEAT + dataset_json['frames'][NUM_HINTS:]
+
 if BATCH_SIZE is not None:
     #For artificially limiting the batch size
     dataset_json['frames']=dataset_json['frames'][:BATCH_SIZE]
@@ -95,12 +114,12 @@ image_filenames=[rp.with_file_extension(x,'png',replace=True) for x in image_fil
 
 
 #SETTINGS VALIDATION
-assert 0<=NUM_HINTS<=BATCH_SIZE
+assert 0<=NUM_HINTS*HINT_REPEAT<=BATCH_SIZE
 #MAX BATCH SIZE FOR RESOLUTIONS:
 #    128x128 : 225
 #    256x256 : ?
 assert BATCH_SIZE==len(dataset_json['frames'])
-icecream.ic(BATCH_SIZE,NUM_HINTS)
+icecream.ic(SEED,BATCH_SIZE,NUM_HINTS,HINT_REPEAT)
 
 #GENERAL HELPER FUNCTIONS
 @rp.memoized
@@ -235,8 +254,8 @@ def modify_predictions(images):
 
     ITER+=1
     
-    if NUM_HINTS:
-        images[:NUM_HINTS]=fixed_images[:NUM_HINTS]
+    if NUM_HINTS*HINT_REPEAT:
+        images[:NUM_HINTS*HINT_REPEAT]=fixed_images[:NUM_HINTS*HINT_REPEAT]
 
     rp.fansi_print("MODIFYING PREDICTIONS!",'cyan','bold')
     before_image=(rp.labeled_image(rp.tiled_images(images),'Diffusion Output',size=50)) #Display images before...
