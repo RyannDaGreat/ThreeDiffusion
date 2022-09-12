@@ -8,6 +8,17 @@
 #    - This process does the diffusion, and coordinates with the plenoxel model code by running it in separate processes.
 # Diffusion Code from https://github.com/lucidrains/denoising-diffusion-pytorch
 
+
+#THOUGHT PROCESS:
+#  HINTS: It seems to need something to disambiguate...
+#  HINT_REPEAT: Large batch sizes seem to ignore the hint, drowning it out...
+#  Gradual Expansion: Just a hunch, like the 'fibbing' idea...what if we just paint outwards?
+#      (maybe starting off with a hint and a view that can't see any of that hint is not only useless but actively bad?)
+#  OVERTIME: It seems to be making so much progress...but all at the last minute lol.
+#      For sum reason, increasing NUM_ITER doesn't always help...actually it's never helped lol. Something about the earlier ITER's thows it off, idk why...but repeating the last diffusion step over and over seems to help a LOT LOT LOT.
+#
+
+
 #IMPORTS
 import rp
 import os
@@ -27,21 +38,25 @@ assert rp.get_current_directory().endswith('/diffusion_for_nerf/source')
 #PATH SETTINGS
 project_root='..' #We're in the 'source' folder of the project
 
-# # drums mode
-# dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
-# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
+#drums mode
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
+resolution=128 #Later on, this should be detected from the diffusion_model_folder
 
-# # chair mode
-# dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
-# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_chair_direct_128')
+##chair mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_chair_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
 
-#lego mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
+##lego mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
 
 ##hotdog mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
 #diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
 
 
 plenoxel_opt_folder = '/raid/ryan/CleanCode/Github/svox2/opt' #TODO: Move this into the project
@@ -55,11 +70,13 @@ plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 #BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
 
 #OTHER SETTINGS
-NUM_ITER=20 #Between 1 and 999. 10 is not enough.
-NUM_HINTS=2 #Number of fixed ground truth images.
-HINT_REPEAT=5 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
+NUM_ITER=5 #Between 1 and 999. 10 is not enough.
+OVERTIME=20 #Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
+NUM_HINTS=1 #Number of fixed ground truth images.
+HINT_REPEAT=10 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
 BATCH_SIZE=20 #Can be None indicating to use the whole training set, or an int overriding it
 BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
+resolution=128 #Later on, this should be detected from the diffusion_model_folder
 
 SEED=random.seed()
 # SEED=1298
@@ -70,7 +87,6 @@ random.seed(SEED)
 #DIFFUSION SETTINGS
 diffusion_device = torch.device("cuda:0") #If you run out of vram, set these to two different devices
 plenoxel_device = torch.device("cuda:0")
-resolution=128 #Later on, this should be detected from the diffusion_model_folder
 
 #DERIVED PATHS:
 combined_photo_folder = rp.path_join(dataset_path,'combined_photos') #For training the diffusion model
@@ -101,8 +117,26 @@ training_json_file     = rp.get_absolute_path(training_json_file    )
 torch.cuda.set_device(diffusion_device)
 dataset_json=rp.load_json(training_json_file)
 
+#This is why we need to know the seed:
 dataset_json['frames']=rp.shuffled(dataset_json['frames'])
+
 dataset_json['frames']=dataset_json['frames'][:NUM_HINTS]*HINT_REPEAT + dataset_json['frames'][NUM_HINTS:]
+
+#Only use cameras similar to the hints...
+#This is my hypothesis: If we start from a completely unseen view, it won't work. We need to expand from a starting view and slowly go outward...
+#We'll call this "Gradual Expanson" for now. Gradual because it will probably learn the easy ones first, then solve the hard ones...
+def frame_dist(frame):
+    #How close is a frame to a hint?
+    target_frames=dataset_json['frames'][:NUM_HINTS]
+    x=frame['transform_matrix']
+    targets=[target_frame['transform_matrix'] for target_frame in target_frames]
+    dists=[rp.euclidean_distance(x,y) for y in targets]
+    return min(dists)
+
+dataset_json["frames"][NUM_HINTS * HINT_REPEAT :] = sorted(
+    dataset_json["frames"][NUM_HINTS * HINT_REPEAT :], key=frame_dist
+)[::1]
+
 
 if BATCH_SIZE is not None:
     #For artificially limiting the batch size
@@ -266,13 +300,16 @@ def modify_predictions(images):
 
     after_image=rp.labeled_image(rp.tiled_images(images),'Plenoxel Output',size=50) #Display after-images...
 
+    ground_truth_image=rp.labeled_image(rp.tiled_images(fixed_images[:len(images)]),'Ground Truth',size=50) #Display after-images...
+
 
     display_image_on_macmax(
         rp.labeled_image(
             rp.tiled_images(
-                [before_image, after_image],
+                [before_image, after_image,ground_truth_image],
                 border_color=(1, 0, 0, 1),
                 border_thickness=10,
+                length=3,
             ),
             "ITER %i / %i"% (ITER,NUM_ITER),
             size=100,
@@ -417,7 +454,7 @@ with SetCurrentDirectoryTemporarily(diffusion_model_folder):
         image_size=resolution,
         timesteps=1000,  # number of steps
         # sampling_timesteps=100,
-        sampling_timesteps=NUM_ITER,
+        sampling_timesteps=NUM_ITER+OVERTIME,
         objective="pred_x0",  # We wanna use this, not noise...make my life easier lol...dont have to worry about messing the math up. Modify the model_predictions function
         loss_type="l1",  # L1 or L2
         modify_predictions=modify_predictions,
@@ -444,6 +481,16 @@ with SetCurrentDirectoryTemporarily(diffusion_model_folder):
         print("...checkpoint loaded!")
 
     icecream.ic(diffusion_device, dataset_path, rp.get_current_directory())
+
+if OVERTIME:
+    overtime_timesteps=int(OVERTIME*(diffusion.num_timesteps/NUM_ITER))
+    extra_betas=[diffusion.betas[-1]]*overtime_timesteps
+    extra_betas=torch.tensor(extra_betas)
+    extra_betas=extra_betas.to(diffusion_device)
+    diffusion.betas=torch.cat((diffusion.betas,extra_betas))
+    diffusion.num_timesteps+=overtime_timesteps
+
+
 
 
 ###############
