@@ -29,6 +29,7 @@ from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
 import icecream
 import inspect
 import random
+import time
 
 #GO INTO THE RIGHT DIRECTORY
 rp.set_current_directory('/raid/ryan/CleanCode/Projects/Experimental/diffusion_for_nerf/source')
@@ -107,18 +108,21 @@ plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 #BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
 
 #OTHER SETTINGS
+
+#PHASE 1
 NUM_ITER=5 #Between 1 and 999. 10 is not enough.
-NUM_ITER=20
+NUM_ITER=2
 OVERTIME=100 #Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
 NUM_HINTS=1 #Number of fixed ground truth images.
-HINT_REPEAT=0 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
-BATCH_SIZE=2 #Can be None indicating to use the whole training set, or an int overriding it. If it's too large it might not work as well, as the camera distribution is no longer uniform.
-# BATCH_SIZE=5
+HINT_REPEAT=8 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
+# BATCH_SIZE=2 #Can be None indicating to use the whole training set, or an int overriding it. If it's too large it might not work as well, as the camera distribution is no longer uniform.
+BATCH_SIZE=17
 BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
-SHUFFLE_CAMERAS=False #If True, we shuffle the camera positions in the dataset - making hints unable to give correct positions. Used to test robustness, but will probably give worse results
+SHUFFLE_CAMERAS=True #If True, we shuffle the camera positions in the dataset - making hints unable to give correct positions. Used to test robustness, but will probably give worse results
 
 SEED=time.time_ns()
-SEED=1663104616704513119
+# SEED=1663104616704513119
+SEED=1663108221093693582
 random.seed(SEED)
 
 # BATCH_SIZE=None
@@ -327,17 +331,20 @@ with SetCurrentDirectoryTemporarily(rp.path_join(dataset_path,'train')):
 
 
 ITER=0
+UNHINT_ITER=20 #After this iter, don't use the hints any more - and try to let the cameras find their way...
 def modify_predictions(images):
     # images = [modify_prediction(image) for image in images]
 
-    global ITER
+    global ITER, UNHINT
 
     print('\n\n\n\n================  STARTING ITER %i  /  %i  ===============\n\n'%(ITER,NUM_ITER))
 
     ITER+=1
     
-    if NUM_HINTS*HINT_REPEAT:
+    if NUM_HINTS*HINT_REPEAT and not ITER>UNHINT_ITER:
         images[:NUM_HINTS*HINT_REPEAT]=fixed_images[:NUM_HINTS*HINT_REPEAT]
+    elif ITER>UNHINT_ITER:
+        print(rp.fansi("UNHINTING!!",'cyan','bold','blue'))
 
     rp.fansi_print("MODIFYING PREDICTIONS!",'cyan','bold')
     before_image=(rp.labeled_image(rp.tiled_images(images),'Diffusion Output',size=50)) #Display images before...
@@ -349,16 +356,17 @@ def modify_predictions(images):
     images=loaded_images
 
 
+    #DISPLAY
     after_image=rp.labeled_image(rp.tiled_images(images),'Plenoxel Output',size=50) #Display after-images...
-
     ground_truth_image=rp.labeled_image(rp.tiled_images(fixed_images[:len(images)]),'Ground Truth',size=50) #Display after-images...
-
-
+    displayed_images=[before_image, after_image]
+    if not SHUFFLE_CAMERAS:
+        displayed_images+=[ground_truth_image]
     display_image_on_macmax(
         rp.labeled_image(
             rp.tiled_images(
-                [before_image, after_image,ground_truth_image],
-                border_color=(1, 0, 0, 1),
+                displayed_images,
+                border_color=(0, 1, 0, 1) if ITER>UNHINT_ITER else (1, 0, 0, 1),
                 border_thickness=10,
                 length=3,
             ),
