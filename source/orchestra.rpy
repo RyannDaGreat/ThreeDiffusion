@@ -17,7 +17,7 @@
 #  OVERTIME: It seems to be making so much progress...but all at the last minute lol.
 #      For sum reason, increasing NUM_ITER doesn't always help...actually it's never helped lol. Something about the earlier ITER's thows it off, idk why...but repeating the last diffusion step over and over seems to help a LOT LOT LOT.
 #  sh_dim=0: No holograms! Holograms are bad lol
-#
+#TODO: Make variable scheduled batch sizes; gradually increase spatial resolution once cameras are aligned (from 16x16 upward to prevent 2-view overfitting)
 
 
 #IMPORTS
@@ -51,18 +51,18 @@ project_root='..' #We're in the 'source' folder of the project
 #resolution=128 #Later on, this should be detected from the diffusion_model_folder
 #DIM_MULTS=(1, 2, 4, 8)
 
-##lego mode
-#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
-#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
-#resolution=128 #Later on, this should be detected from the diffusion_model_folder
-#DIM_MULTS=(1, 2, 4, 8)
-
-#hotdog mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
+#lego mode
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
+diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
 resolution=128 #Later on, this should be detected from the diffusion_model_folder
 DIM_MULTS=(1, 2, 4, 8)
+
+##hotdog mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8)
 
 ##drums256 mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
@@ -108,21 +108,24 @@ plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 
 #OTHER SETTINGS
 NUM_ITER=5 #Between 1 and 999. 10 is not enough.
-OVERTIME=20 #Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
+NUM_ITER=20
+OVERTIME=100 #Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
 NUM_HINTS=1 #Number of fixed ground truth images.
 HINT_REPEAT=0 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
-BATCH_SIZE=20 #Can be None indicating to use the whole training set, or an int overriding it
+BATCH_SIZE=2 #Can be None indicating to use the whole training set, or an int overriding it. If it's too large it might not work as well, as the camera distribution is no longer uniform.
+# BATCH_SIZE=5
 BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
+SHUFFLE_CAMERAS=False #If True, we shuffle the camera positions in the dataset - making hints unable to give correct positions. Used to test robustness, but will probably give worse results
 
-SEED=random.seed()
-# SEED=1298
+SEED=time.time_ns()
+SEED=1663104616704513119
 random.seed(SEED)
 
 # BATCH_SIZE=None
 
 #DIFFUSION SETTINGS
 diffusion_device = torch.device("cuda:0") #If you run out of vram, set these to two different devices
-plenoxel_device = torch.device("cuda:0")
+plenoxel_device = torch.device("cuda:1")
 
 #DERIVED PATHS:
 combined_photo_folder = rp.path_join(dataset_path,'combined_photos') #For training the diffusion model
@@ -155,6 +158,13 @@ dataset_json=rp.load_json(training_json_file)
 
 #This is why we need to know the seed:
 dataset_json['frames']=rp.shuffled(dataset_json['frames'])
+
+if SHUFFLE_CAMERAS: 
+    rp.fansi_print("SHUFFLING CAMERAS!!!",'yellow','bold')
+    camera_transforms=[x['transform_matrix'] for x in dataset_json['frames']]
+    camera_transforms=rp.shuffled(camera_transforms)
+    for frame,transform in zip(dataset_json['frames'],camera_transforms):
+        frame['transform_matrix']=transform
 
 dataset_json['frames']=dataset_json['frames'][:NUM_HINTS]*HINT_REPEAT + dataset_json['frames'][NUM_HINTS:]
 
@@ -289,6 +299,8 @@ def load_plenoxel_renderings(images_folder):
 
     #The plenoxel code outputs images that compare ground truth to its own output, side by side. We only want the output, so we take the right half of each image.
     images=[rp.split_tensor_into_regions(x,1,2)[1] for x in images]
+    images=[rp.as_float_image(x) for x in images]
+    images=[rp.as_rgb_image(x) for x in images]
 
     return images
 
@@ -332,7 +344,10 @@ def modify_predictions(images):
 
     save_images_to_trade(images)  # Where plenoxels can see them...
     output_images_folder = test_launch_trainer(train=True, images=True, video=False)
-    images = load_plenoxel_renderings(output_images_folder)
+    loaded_images = load_plenoxel_renderings(output_images_folder)
+    # images[1:]=loaded_images[1:]#Let one evolve without nerf
+    images=loaded_images
+
 
     after_image=rp.labeled_image(rp.tiled_images(images),'Plenoxel Output',size=50) #Display after-images...
 
