@@ -16,6 +16,7 @@
 #      (maybe starting off with a hint and a view that can't see any of that hint is not only useless but actively bad?)
 #  OVERTIME: It seems to be making so much progress...but all at the last minute lol.
 #      For sum reason, increasing NUM_ITER doesn't always help...actually it's never helped lol. Something about the earlier ITER's thows it off, idk why...but repeating the last diffusion step over and over seems to help a LOT LOT LOT.
+#  sh_dim=0: No holograms! Holograms are bad lol
 #
 
 
@@ -38,25 +39,61 @@ assert rp.get_current_directory().endswith('/diffusion_for_nerf/source')
 #PATH SETTINGS
 project_root='..' #We're in the 'source' folder of the project
 
-#drums mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
-resolution=128 #Later on, this should be detected from the diffusion_model_folder
+##drums mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8)
 
 ##chair mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
 #diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_chair_direct_128')
 #resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8)
 
 ##lego mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
 #diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
 #resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8)
 
-##hotdog mode
+#hotdog mode
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
+resolution=128 #Later on, this should be detected from the diffusion_model_folder
+DIM_MULTS=(1, 2, 4, 8)
+
+##drums256 mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_256')
+#resolution=256 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8, 16)
+
+##lego256 mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_256')
+#resolution=256 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8, 16)
+
+##ficus256 mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/ficus"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_ficus_direct_256')
+#resolution=256 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8, 16)
+
+##hotdog256 mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
-#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
-#resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_256')
+#resolution=256 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8, 16)
+
+
+
+
+
+
+
 
 
 plenoxel_opt_folder = '/raid/ryan/CleanCode/Github/svox2/opt' #TODO: Move this into the project
@@ -73,10 +110,9 @@ plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 NUM_ITER=5 #Between 1 and 999. 10 is not enough.
 OVERTIME=20 #Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
 NUM_HINTS=1 #Number of fixed ground truth images.
-HINT_REPEAT=10 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
+HINT_REPEAT=0 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
 BATCH_SIZE=20 #Can be None indicating to use the whole training set, or an int overriding it
 BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
-resolution=128 #Later on, this should be detected from the diffusion_model_folder
 
 SEED=random.seed()
 # SEED=1298
@@ -447,7 +483,7 @@ def test_launch_trainer(train=True,images=True,video=True):
 
 #DIFFUSION SETUP
 with SetCurrentDirectoryTemporarily(diffusion_model_folder):
-    model = Unet(dim=64, dim_mults=(1, 2, 4, 8)).to(diffusion_device)
+    model = Unet(dim=64, dim_mults=DIM_MULTS).to(diffusion_device)
 
     diffusion = GaussianDiffusion(
         model,
