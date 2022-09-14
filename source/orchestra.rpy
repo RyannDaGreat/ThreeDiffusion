@@ -52,11 +52,11 @@ project_root='..' #We're in the 'source' folder of the project
 #resolution=128 #Later on, this should be detected from the diffusion_model_folder
 #DIM_MULTS=(1, 2, 4, 8)
 
-#lego mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
-resolution=128 #Later on, this should be detected from the diffusion_model_folder
-DIM_MULTS=(1, 2, 4, 8)
+##lego mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_lego_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8)
 
 ##hotdog mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
@@ -65,11 +65,11 @@ DIM_MULTS=(1, 2, 4, 8)
 #resolution=128 #Later on, this should be detected from the diffusion_model_folder
 #DIM_MULTS=(1, 2, 4, 8)
 
-##drums256 mode
-#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
-#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_256')
-#resolution=256 #Later on, this should be detected from the diffusion_model_folder
-#DIM_MULTS=(1, 2, 4, 8, 16)
+#drums256 mode
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_256')
+resolution=256 #Later on, this should be detected from the diffusion_model_folder
+DIM_MULTS=(1, 2, 4, 8, 16)
 
 ##lego256 mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
