@@ -40,11 +40,11 @@ assert rp.get_current_directory().endswith('/diffusion_for_nerf/source')
 #PATH SETTINGS
 project_root='..' #We're in the 'source' folder of the project
 
-##drums mode
-#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
-#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
-#resolution=128 #Later on, this should be detected from the diffusion_model_folder
-#DIM_MULTS=(1, 2, 4, 8)
+#drums mode
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
+resolution=128 #Later on, this should be detected from the diffusion_model_folder
+DIM_MULTS=(1, 2, 4, 8)
 
 ##chair mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
@@ -65,11 +65,11 @@ project_root='..' #We're in the 'source' folder of the project
 #resolution=128 #Later on, this should be detected from the diffusion_model_folder
 #DIM_MULTS=(1, 2, 4, 8)
 
-#drums256 mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_256')
-resolution=256 #Later on, this should be detected from the diffusion_model_folder
-DIM_MULTS=(1, 2, 4, 8, 16)
+##drums256 mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_256')
+#resolution=256 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8, 16)
 
 ##lego256 mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
@@ -114,9 +114,9 @@ NUM_ITER=5 #Between 1 and 999. 10 is not enough.
 NUM_ITER=2
 OVERTIME=100 #Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
 NUM_HINTS=1 #Number of fixed ground truth images.
-HINT_REPEAT=8 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
+HINT_REPEAT=8*3 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
 # BATCH_SIZE=2 #Can be None indicating to use the whole training set, or an int overriding it. If it's too large it might not work as well, as the camera distribution is no longer uniform.
-BATCH_SIZE=17
+BATCH_SIZE=17*3
 BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
 SHUFFLE_CAMERAS=False #If True, we shuffle the camera positions in the dataset - making hints unable to give correct positions. Used to test robustness, but will probably give worse results
 
@@ -185,7 +185,7 @@ def frame_dist(frame):
 
 dataset_json["frames"][NUM_HINTS * HINT_REPEAT :] = sorted(
     dataset_json["frames"][NUM_HINTS * HINT_REPEAT :], key=frame_dist
-)[::3]
+)[::1]
 
 
 if BATCH_SIZE is not None:
