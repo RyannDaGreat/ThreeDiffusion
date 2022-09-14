@@ -118,7 +118,7 @@ HINT_REPEAT=8 #Number of times we repeat the hints, to give them more weight...t
 # BATCH_SIZE=2 #Can be None indicating to use the whole training set, or an int overriding it. If it's too large it might not work as well, as the camera distribution is no longer uniform.
 BATCH_SIZE=17
 BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
-SHUFFLE_CAMERAS=True #If True, we shuffle the camera positions in the dataset - making hints unable to give correct positions. Used to test robustness, but will probably give worse results
+SHUFFLE_CAMERAS=False #If True, we shuffle the camera positions in the dataset - making hints unable to give correct positions. Used to test robustness, but will probably give worse results
 
 SEED=time.time_ns()
 # SEED=1663104616704513119
@@ -185,7 +185,7 @@ def frame_dist(frame):
 
 dataset_json["frames"][NUM_HINTS * HINT_REPEAT :] = sorted(
     dataset_json["frames"][NUM_HINTS * HINT_REPEAT :], key=frame_dist
-)[::1]
+)[::3]
 
 
 if BATCH_SIZE is not None:
@@ -331,7 +331,7 @@ with SetCurrentDirectoryTemporarily(rp.path_join(dataset_path,'train')):
 
 
 ITER=0
-UNHINT_ITER=20 #After this iter, don't use the hints any more - and try to let the cameras find their way...
+UNHINT_ITER=2000000000000 #After this iter, don't use the hints any more - and try to let the cameras find their way... !!!! this is shit; dont use it
 def modify_predictions(images):
     # images = [modify_prediction(image) for image in images]
 
