@@ -40,11 +40,11 @@ assert rp.get_current_directory().endswith('/diffusion_for_nerf/source')
 #PATH SETTINGS
 project_root='..' #We're in the 'source' folder of the project
 
-#drums mode
-dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
-diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
-resolution=128 #Later on, this should be detected from the diffusion_model_folder
-DIM_MULTS=(1, 2, 4, 8)
+##drums mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8)
 
 ##chair mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/chair"
@@ -58,9 +58,15 @@ DIM_MULTS=(1, 2, 4, 8)
 #resolution=128 #Later on, this should be detected from the diffusion_model_folder
 #DIM_MULTS=(1, 2, 4, 8)
 
+##mic mode
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/mic"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_mic_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8)
+
 ##hotdog mode
 #dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
-#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+## dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
 #diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_hotdog_direct_128')
 #resolution=128 #Later on, this should be detected from the diffusion_model_folder
 #DIM_MULTS=(1, 2, 4, 8)
@@ -89,6 +95,12 @@ DIM_MULTS=(1, 2, 4, 8)
 #resolution=256 #Later on, this should be detected from the diffusion_model_folder
 #DIM_MULTS=(1, 2, 4, 8, 16)
 
+#diffusion_mashup_lego_hotdog_drums_mic_128
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/mic"
+diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_mashup_lego_hotdog_drums_mic_128')
+resolution=128 #Later on, this should be detected from the diffusion_model_folder
+DIM_MULTS=(1, 2, 4, 8)
+
 
 
 
@@ -110,19 +122,20 @@ plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 #OTHER SETTINGS
 
 #PHASE 1
+kiki=1
 NUM_ITER=5 #Between 1 and 999. 10 is not enough.
 NUM_ITER=2
-OVERTIME=100 #Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
+OVERTIME=100 #1000 is way higher than we usually need - about 20. But it's nice to keep training when it doesn't work out as well. Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
 NUM_HINTS=1 #Number of fixed ground truth images.
-HINT_REPEAT=8*3 #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
+HINT_REPEAT=8*kiki #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
 # BATCH_SIZE=2 #Can be None indicating to use the whole training set, or an int overriding it. If it's too large it might not work as well, as the camera distribution is no longer uniform.
-BATCH_SIZE=17*3
+BATCH_SIZE=17*kiki
 BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
-SHUFFLE_CAMERAS=False #If True, we shuffle the camera positions in the dataset - making hints unable to give correct positions. Used to test robustness, but will probably give worse results
+SHUFFLE_CAMERAS=0 #If True, we shuffle the camera positions in the dataset - making hints unable to give correct positions. Used to test robustness, but will probably give worse results
 
 SEED=time.time_ns()
 # SEED=1663104616704513119
-SEED=1663108221093693582
+# SEED=1663108221093693582
 random.seed(SEED)
 
 # BATCH_SIZE=None
@@ -358,10 +371,14 @@ def modify_predictions(images):
 
     #DISPLAY
     after_image=rp.labeled_image(rp.tiled_images(images),'Plenoxel Output',size=50) #Display after-images...
-    ground_truth_image=rp.labeled_image(rp.tiled_images(fixed_images[:len(images)]),'Ground Truth',size=50) #Display after-images...
     displayed_images=[before_image, after_image]
+
+    ground_truth_images=fixed_images[:len(images)]
+    ground_truth_images[:NUM_HINTS*HINT_REPEAT]=[rp.bordered_image_solid_color(x,color=(0,1,.5,1),thickness=-2) for x in ground_truth_images[:NUM_HINTS*HINT_REPEAT]]
+    ground_truth_image=rp.labeled_image(rp.tiled_images(ground_truth_images),'Ground Truth',size=50) #Display after-images...
     if not SHUFFLE_CAMERAS:
         displayed_images+=[ground_truth_image]
+
     display_image_on_macmax(
         rp.labeled_image(
             rp.tiled_images(
