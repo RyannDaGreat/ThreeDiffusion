@@ -31,6 +31,8 @@ import inspect
 import random
 import time
 
+NO_BLACK=False #Override on appropriate modes
+
 #GO INTO THE RIGHT DIRECTORY
 rp.set_current_directory('/raid/ryan/CleanCode/Projects/Experimental/diffusion_for_nerf/source')
 
@@ -97,9 +99,32 @@ project_root='..' #We're in the 'source' folder of the project
 
 #diffusion_mashup_lego_hotdog_drums_mic_128
 dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/mic"
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/lego"
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/drums"
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/hotdog"
 diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_mashup_lego_hotdog_drums_mic_128')
+# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_mashup_lego_drums_128')
+# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
+# diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_mic_direct_128')
 resolution=128 #Later on, this should be detected from the diffusion_model_folder
 DIM_MULTS=(1, 2, 4, 8)
+
+##Cactus 128
+#dataset_path = "/home/ryan/CleanCode/Datasets/nerf/nerf_synthetic/ficus"
+#diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_cactus_128')
+## diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_mashup_lego_drums_128')
+## diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_drums_direct_128')
+## diffusion_model_folder = rp.path_join(project_root,'diffusion_models/diffusion_mic_direct_128')
+#resolution=128 #Later on, this should be detected from the diffusion_model_folder
+#DIM_MULTS=(1, 2, 4, 8)
+## NO_BLACK=True
+
+
+
+
+
+
+
 
 
 
@@ -123,11 +148,14 @@ plenoxel_experiment_name = 'sandbox_for_plenoxel_diffusion'
 
 #PHASE 1
 kiki=1
+# kiki=3
 NUM_ITER=5 #Between 1 and 999. 10 is not enough.
 NUM_ITER=2
+# NUM_ITER=20
 OVERTIME=100 #1000 is way higher than we usually need - about 20. But it's nice to keep training when it doesn't work out as well. Repeat the last timestep this number of times. It seems to make a lot of progress at the last minute.
 NUM_HINTS=1 #Number of fixed ground truth images.
 HINT_REPEAT=8*kiki #Number of times we repeat the hints, to give them more weight...total number is NUM_HINTS*HINT_REPEAT, and that takes away from BATCH_SIZE
+# HINT_REPEAT*=2
 # BATCH_SIZE=2 #Can be None indicating to use the whole training set, or an int overriding it. If it's too large it might not work as well, as the camera distribution is no longer uniform.
 BATCH_SIZE=17*kiki
 BATCH_SIZE+=NUM_HINTS * HINT_REPEAT
@@ -136,13 +164,15 @@ SHUFFLE_CAMERAS=0 #If True, we shuffle the camera positions in the dataset - mak
 SEED=time.time_ns()
 # SEED=1663104616704513119
 # SEED=1663108221093693582
+# SEED=1663519382282182915
+# SEED=1663531856184860508
 random.seed(SEED)
 
 # BATCH_SIZE=None
 
 #DIFFUSION SETTINGS
-diffusion_device = torch.device("cuda:0") #If you run out of vram, set these to two different devices
-plenoxel_device = torch.device("cuda:1")
+diffusion_device = torch.device("cuda:2") #If you run out of vram, set these to two different devices
+plenoxel_device = torch.device("cuda:2")
 
 #DERIVED PATHS:
 combined_photo_folder = rp.path_join(dataset_path,'combined_photos') #For training the diffusion model
@@ -445,6 +475,8 @@ def render_imgs_circle(checkpoint_path, dataset_path):
     assert_right_plenoxel_conditions()
 
     command = "python render_imgs_circle.py --blackbg --radius 2 %s %s"
+    if NO_BLACK:
+        command = "python render_imgs_circle.py --radius 2 %s %s"
     command %= (
         checkpoint_path,
         dataset_path,
@@ -466,6 +498,8 @@ def render_imgs(checkpoint_path, dataset_path):
     #Not that it would (currently) make a difference - in the diffusion plenoxel test, the test and val folders and jsons are symlinks to the train ones
 
     command = "python render_imgs.py --blackbg --no_vid --no_lpips --train %s %s"
+    if NO_BLACK:
+        command = "python render_imgs.py --no_vid --no_lpips --train %s %s"
     command %= (
         checkpoint_path,
         dataset_path,
