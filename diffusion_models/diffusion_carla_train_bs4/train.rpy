@@ -4,10 +4,10 @@ import torch
 from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
 import icecream
 
-from rp import *
-sleep(2)
-
-dataset_path = "/home/ryan/CleanCode/Projects/Downloaded/stable-diffusion/outputs/img-samples/CACTUS"
+dataset_path = "/home/ryan/CleanCode/Datasets/nerf/CARLA/srn_cars/combined/rgb_train"
+if get_computer_name()=='rlab-a5000-02':
+    dataset_path = "/mnt/md0/raid/ryan/CleanCode/Datasets/nerf/CARLA/srn_cars/combined/rgb_train"
+    #Gluster is so fucking slow...
 
 device = torch.device("cuda:2")
 torch.cuda.set_device(device)
@@ -20,7 +20,7 @@ model = Unet(dim=64, dim_mults=(1, 2, 4, 8)).to(device)
 
 diffusion = GaussianDiffusion(
     model,
-    image_size=256,
+    image_size=128,
     timesteps=1000,  # number of steps
     sampling_timesteps=250,  # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
     objective="pred_x0",  # We wanna use this, not noise...make my life easier lol...dont have to worry about messing the math up. Modify the model_predictions function
@@ -31,6 +31,7 @@ diffusion = GaussianDiffusion(
 trainer = Trainer(
     diffusion,
     dataset_path,
+    #train_batch_size=4,  # Originally was 32
     train_batch_size=4,  # Originally was 32
     train_lr=8e-5,
     train_num_steps=700000,  # total training steps

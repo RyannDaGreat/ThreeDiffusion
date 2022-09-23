@@ -4,12 +4,9 @@ import torch
 from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
 import icecream
 
-from rp import *
-sleep(2)
-
 dataset_path = "/home/ryan/CleanCode/Projects/Downloaded/stable-diffusion/outputs/img-samples/CACTUS"
 
-device = torch.device("cuda:2")
+device = torch.device("cuda:3")
 torch.cuda.set_device(device)
 
 def modify_predictions(images):
@@ -20,7 +17,7 @@ model = Unet(dim=64, dim_mults=(1, 2, 4, 8)).to(device)
 
 diffusion = GaussianDiffusion(
     model,
-    image_size=256,
+    image_size=128,
     timesteps=1000,  # number of steps
     sampling_timesteps=250,  # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
     objective="pred_x0",  # We wanna use this, not noise...make my life easier lol...dont have to worry about messing the math up. Modify the model_predictions function

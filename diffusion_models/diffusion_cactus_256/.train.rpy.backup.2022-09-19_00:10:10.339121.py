@@ -4,12 +4,9 @@ import torch
 from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
 import icecream
 
-from rp import *
-sleep(2)
-
 dataset_path = "/home/ryan/CleanCode/Projects/Downloaded/stable-diffusion/outputs/img-samples/CACTUS"
 
-device = torch.device("cuda:2")
+device = torch.device("cuda:3")
 torch.cuda.set_device(device)
 
 def modify_predictions(images):
